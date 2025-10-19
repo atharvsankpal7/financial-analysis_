@@ -31,6 +31,11 @@ interface UserData {
   annualSavingsInterestRate: number;
 }
 
+interface PortfolioData {
+  unallocatedAmount: number;
+  totalAllocated: number;
+}
+
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -39,6 +44,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(
+    null,
+  );
   const [formData, setFormData] = useState<UserData>({
     fullName: "",
     location: {
@@ -57,6 +65,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetchUserData();
+    fetchPortfolioData();
   }, [userId]);
 
   const fetchUserData = async () => {
@@ -75,6 +84,34 @@ export default function ProfilePage() {
       setErrors({ fetch: "An error occurred while loading user data" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPortfolioData = async () => {
+    try {
+      const response = await fetch(`/api/portfolio/${userId}`);
+      const data = await response.json();
+
+      if (data.success) {
+        const allocations = data.data.portfolio.allocations as Record<
+          string,
+          number
+        >;
+        const totalAllocated =
+          data.data.portfolio.savingsAllocation +
+          data.data.portfolio.goldAllocation +
+          Object.values(allocations).reduce(
+            (sum: number, val: number) => sum + val,
+            0,
+          );
+
+        setPortfolioData({
+          unallocatedAmount: data.data.portfolio.unallocatedAmount || 0,
+          totalAllocated,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch portfolio data");
     }
   };
 
@@ -136,6 +173,15 @@ export default function ProfilePage() {
     const investment = formData.initialInvestmentAmount;
     if (!investment || investment < 1000) {
       newErrors.initialInvestmentAmount = "Minimum investment is ₹1,000";
+    }
+
+    if (portfolioData && userData) {
+      const currentInvestment = userData.initialInvestmentAmount;
+      const reduction = currentInvestment - investment;
+
+      if (reduction > 0 && reduction > portfolioData.unallocatedAmount) {
+        newErrors.initialInvestmentAmount = `Cannot reduce investment by ${formatCurrency(reduction)}. Only ${formatCurrency(portfolioData.unallocatedAmount)} is unallocated. Please adjust your portfolio first.`;
+      }
     }
 
     const thresholdValue = formData.savingsThreshold.value;
@@ -210,6 +256,15 @@ export default function ProfilePage() {
     );
   }
 
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
@@ -237,6 +292,26 @@ export default function ProfilePage() {
             </Button>
           </div>
         </div>
+
+        {portfolioData && portfolioData.unallocatedAmount > 0 && (
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-orange-900">
+                  Unallocated Amount
+                </h3>
+                <p className="text-sm text-orange-700 mt-1">
+                  You have {formatCurrency(portfolioData.unallocatedAmount)} not
+                  allocated in your portfolio. You can reduce your investment by
+                  this amount or allocate it in the adjustment dialog.
+                </p>
+              </div>
+              <div className="text-2xl font-bold text-orange-900">
+                {formatCurrency(portfolioData.unallocatedAmount)}
+              </div>
+            </div>
+          </div>
+        )}
 
         <Card>
           <CardHeader>

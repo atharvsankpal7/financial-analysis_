@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import UserPortfolio from '@/models/UserPortfolio';
-import Asset from '@/models/Asset';
-import GoldPrice from '@/models/GoldPrice';
-import { calculateTotalValue, calculateDistribution } from '@/lib/utils';
-import { calculatePredictedReturns } from '@/lib/predictions';
-import { fetchStockPrice } from '@/lib/external-api';
-import mongoose from 'mongoose';
+import { NextRequest, NextResponse } from "next/server";
+import connectDB from "@/lib/mongodb";
+import User from "@/models/User";
+import UserPortfolio from "@/models/UserPortfolio";
+import Asset from "@/models/Asset";
+import GoldPrice from "@/models/GoldPrice";
+import { calculateTotalValue, calculateDistribution } from "@/lib/utils";
+import { calculatePredictedReturns } from "@/lib/predictions";
+import { fetchStockPrice } from "@/lib/external-api";
+import mongoose from "mongoose";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: { userId: string } },
 ) {
   try {
     await connectDB();
@@ -22,9 +22,9 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          message: 'Invalid user ID',
+          message: "Invalid user ID",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -34,9 +34,9 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          message: 'User not found',
+          message: "User not found",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -46,9 +46,9 @@ export async function GET(
       return NextResponse.json(
         {
           success: false,
-          message: 'Portfolio not found',
+          message: "Portfolio not found",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -73,7 +73,7 @@ export async function GET(
           category: asset.category,
           currentPrice,
         };
-      })
+      }),
     );
 
     const latestGoldPrice = await GoldPrice.findOne({
@@ -84,28 +84,31 @@ export async function GET(
 
     const goldPrice = latestGoldPrice?.price || 6000;
 
-    const allocations = portfolio.allocations instanceof Map
-      ? Object.fromEntries(portfolio.allocations)
-      : portfolio.allocations;
+    const allocations =
+      portfolio.allocations instanceof Map
+        ? Object.fromEntries(portfolio.allocations)
+        : portfolio.allocations;
 
     const totalValue = calculateTotalValue(
       allocations,
       portfolio.goldAllocation,
-      portfolio.savingsAllocation
+      portfolio.savingsAllocation,
     );
 
     const distribution = calculateDistribution(
       allocations,
       portfolio.goldAllocation,
-      portfolio.savingsAllocation
+      portfolio.savingsAllocation,
     );
 
     const predictedReturns = calculatePredictedReturns(
       allocations,
       portfolio.goldAllocation,
       portfolio.savingsAllocation,
-      user.annualSavingsInterestRate
+      user.annualSavingsInterestRate,
     );
+
+    const unallocatedAmount = user.initialInvestmentAmount - totalValue;
 
     return NextResponse.json(
       {
@@ -118,6 +121,7 @@ export async function GET(
             savingsAllocation: portfolio.savingsAllocation,
             totalValue,
             distribution,
+            unallocatedAmount,
           },
           marketData: {
             stocks: enrichedStocks,
@@ -126,15 +130,15 @@ export async function GET(
           predictedReturns,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: any) {
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Internal server error',
+        message: error.message || "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

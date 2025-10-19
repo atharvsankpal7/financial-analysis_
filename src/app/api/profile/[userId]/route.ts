@@ -118,10 +118,54 @@ export async function PUT(
       );
     }
 
-    const oldInvestmentAmount = user.initialInvestmentAmount;
+    const portfolio = await UserPortfolio.findOne({ userId });
+
+    if (portfolio) {
+      const allocations =
+        portfolio.allocations instanceof Map
+          ? Object.fromEntries(portfolio.allocations)
+          : portfolio.allocations;
+
+      const currentTotalAllocated =
+        portfolio.savingsAllocation +
+        portfolio.goldAllocation +
+        Object.values(allocations as Record<string, number>).reduce(
+          (sum, val) => sum + val,
+          0,
+        );
+
+      const unallocatedAmount =
+        user.initialInvestmentAmount - currentTotalAllocated;
+      const investmentReduction =
+        user.initialInvestmentAmount - data.initialInvestmentAmount;
+
+      if (investmentReduction > 0 && investmentReduction > unallocatedAmount) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Cannot reduce investment by ${investmentReduction}. Only ${unallocatedAmount} is unallocated. Please adjust your portfolio allocations first.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    const existingUser = await User.findById(userId);
+
+    if (!existingUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User not found",
+        },
+        { status: 404 },
+      );
+    }
+
+    const oldInvestmentAmount = existingUser.initialInvestmentAmount;
     const oldSafeSavings = calculateSafeSavings(
       oldInvestmentAmount,
-      user.savingsThreshold,
+      existingUser.savingsThreshold,
     );
 
     const newInvestmentAmount = data.initialInvestmentAmount;
@@ -130,29 +174,29 @@ export async function PUT(
       data.savingsThreshold,
     );
 
-    user.fullName = data.fullName;
-    user.location = data.location;
-    user.initialInvestmentAmount = data.initialInvestmentAmount;
-    user.savingsThreshold = data.savingsThreshold;
-    user.annualSavingsInterestRate = data.annualSavingsInterestRate;
+    existingUser.fullName = data.fullName;
+    existingUser.location = data.location;
+    existingUser.initialInvestmentAmount = data.initialInvestmentAmount;
+    existingUser.savingsThreshold = data.savingsThreshold;
+    existingUser.annualSavingsInterestRate = data.annualSavingsInterestRate;
 
-    await user.save();
+    await existingUser.save();
 
     if (
       oldInvestmentAmount !== newInvestmentAmount ||
       oldSafeSavings !== newSafeSavings
     ) {
-      const portfolio = await UserPortfolio.findOne({ userId });
+      const existingPortfolio = await UserPortfolio.findOne({ userId });
 
-      if (portfolio) {
+      if (existingPortfolio) {
         const allocations =
-          portfolio.allocations instanceof Map
-            ? Object.fromEntries(portfolio.allocations)
-            : portfolio.allocations;
+          existingPortfolio.allocations instanceof Map
+            ? Object.fromEntries(existingPortfolio.allocations)
+            : existingPortfolio.allocations;
 
         const currentTotal =
-          portfolio.savingsAllocation +
-          portfolio.goldAllocation +
+          existingPortfolio.savingsAllocation +
+          existingPortfolio.goldAllocation +
           Object.values(allocations as Record<string, number>).reduce(
             (sum, val) => sum + val,
             0,
@@ -161,16 +205,17 @@ export async function PUT(
         if (currentTotal !== newInvestmentAmount) {
           const ratio = newInvestmentAmount / currentTotal;
 
-          portfolio.savingsAllocation = Math.max(
+          existingPortfolio.savingsAllocation = Math.max(
             newSafeSavings,
-            portfolio.savingsAllocation * ratio,
+            existingPortfolio.savingsAllocation * ratio,
           );
-          portfolio.goldAllocation = portfolio.goldAllocation * ratio;
+          existingPortfolio.goldAllocation =
+            existingPortfolio.goldAllocation * ratio;
 
           const currentAllocations =
-            portfolio.allocations instanceof Map
-              ? Object.fromEntries(portfolio.allocations)
-              : portfolio.allocations;
+            existingPortfolio.allocations instanceof Map
+              ? Object.fromEntries(existingPortfolio.allocations)
+              : existingPortfolio.allocations;
 
           const newAllocations: Record<string, number> = {};
           for (const key in currentAllocations as Record<string, number>) {
@@ -178,19 +223,19 @@ export async function PUT(
               (currentAllocations as Record<string, number>)[key] * ratio;
           }
 
-          portfolio.allocations = newAllocations as any;
+          existingPortfolio.allocations = newAllocations as any;
 
           const newTotal =
-            portfolio.savingsAllocation +
-            portfolio.goldAllocation +
+            existingPortfolio.savingsAllocation +
+            existingPortfolio.goldAllocation +
             Object.values(newAllocations).reduce((sum, val) => sum + val, 0);
 
           if (Math.abs(newTotal - newInvestmentAmount) > 0.01) {
             const adjustment = newInvestmentAmount - newTotal;
-            portfolio.savingsAllocation += adjustment;
+            existingPortfolio.savingsAllocation += adjustment;
           }
 
-          await portfolio.save();
+          await existingPortfolio.save();
         }
       }
     }
@@ -200,7 +245,7 @@ export async function PUT(
         success: true,
         message: "Profile updated successfully",
         data: {
-          userId: user._id.toString(),
+          userId: existingUser._id.toString(),
         },
       },
       { status: 200 },

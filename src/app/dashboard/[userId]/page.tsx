@@ -31,6 +31,7 @@ interface PortfolioData {
       gold: number;
       stocks: number;
     };
+    unallocatedAmount: number;
   };
   marketData: {
     stocks: Array<{
@@ -215,6 +216,27 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
+
+        {portfolioData.portfolio.unallocatedAmount > 0 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-yellow-900">
+                  Unallocated Amount Available
+                </h3>
+                <p className="text-sm text-yellow-700 mt-1">
+                  You have{" "}
+                  {formatCurrency(portfolioData.portfolio.unallocatedAmount)}{" "}
+                  that is not allocated in your portfolio. Use the "Adjust
+                  Investments" button to allocate these funds.
+                </p>
+              </div>
+              <div className="text-2xl font-bold text-yellow-900">
+                {formatCurrency(portfolioData.portfolio.unallocatedAmount)}
+              </div>
+            </div>
+          </div>
+        )}
 
         <PortfolioOverviewCards
           totalValue={portfolioData.portfolio.totalValue}
