@@ -159,6 +159,10 @@ export default function InitialInfoPage() {
       const data = await response.json();
 
       if (data.success) {
+        // Store userId in localStorage for use across the app
+        if (data.data?.userId) {
+          localStorage.setItem("userId", data.data.userId);
+        }
         router.push("/onboarding/select-stocks");
       } else {
         setErrors({ submit: data.message || "Failed to save profile" });

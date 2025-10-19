@@ -4,10 +4,9 @@ import User from "@/models/User";
 import OnboardingData from "@/models/OnboardingData";
 import UserPortfolio from "@/models/UserPortfolio";
 import Asset from "@/models/Asset";
-import GoldPrice from "@/models/GoldPrice";
 import { calculateTotalValue, calculateDistribution } from "@/lib/utils";
 import { calculatePredictedReturns } from "@/lib/predictions";
-import { fetchStockPrice } from "@/lib/external-api";
+import { fetchIndianStockPrice, fetchGoldPrice } from "@/lib/external-api";
 import mongoose from "mongoose";
 
 export async function GET(
@@ -74,7 +73,7 @@ export async function GET(
         let currentPrice = asset.currentPrice;
 
         try {
-          currentPrice = await fetchStockPrice(asset.symbol);
+          currentPrice = await fetchIndianStockPrice(asset.symbol);
         } catch (error) {
           currentPrice = asset.currentPrice;
         }
@@ -89,13 +88,12 @@ export async function GET(
       }),
     );
 
-    const latestGoldPrice = await GoldPrice.findOne({
-      state: onboardingData.location.state,
-    })
-      .sort({ date: -1 })
-      .lean();
-
-    const goldPrice = latestGoldPrice?.price || 6000;
+    let goldPrice = 6000;
+    try {
+      goldPrice = await fetchGoldPrice(onboardingData.location.state);
+    } catch (error) {
+      goldPrice = 6000;
+    }
 
     const allocations =
       portfolio.allocations instanceof Map

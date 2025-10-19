@@ -174,10 +174,14 @@ export function AdjustmentDialog({
 
   const handleSave = async () => {
     const remaining = calculateRemaining();
-    if (Math.abs(remaining) > 0.01) {
-      setError("Total allocations and savings must equal total investment");
+
+    // Check if over-allocated (negative remaining)
+    if (remaining < -0.01) {
+      setError("Total allocations exceed available investment amount");
       return;
     }
+
+    // Remaining positive amount is allowed - it becomes unallocated
 
     if (adjustmentData && savingsFinal < adjustmentData.safeSavings) {
       setError(
@@ -230,8 +234,9 @@ export function AdjustmentDialog({
   };
 
   const remaining = calculateRemaining();
+  const unallocatedAmount = remaining > 0 ? remaining : 0;
   const isValid =
-    Math.abs(remaining) < 0.01 &&
+    remaining >= -0.01 &&
     (adjustmentData ? savingsFinal >= adjustmentData.safeSavings : false);
 
   const getChangeIndicator = (change: number) => {
@@ -276,7 +281,7 @@ export function AdjustmentDialog({
         ) : adjustmentData ? (
           <div className="space-y-6">
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div>
                   <span className="text-sm text-gray-600">
                     Total Investment:
@@ -309,14 +314,38 @@ export function AdjustmentDialog({
                     {formatCurrency(remaining)}
                   </div>
                 </div>
+                <div>
+                  <span className="text-sm text-gray-600">
+                    Unallocated Amount:
+                  </span>
+                  <div
+                    className={`text-lg font-bold ${
+                      unallocatedAmount > 0 ? "text-blue-600" : "text-gray-600"
+                    }`}
+                  >
+                    {formatCurrency(unallocatedAmount)}
+                  </div>
+                </div>
               </div>
             </div>
+
+            {unallocatedAmount > 0.01 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-700">
+                  <strong>Note:</strong> You have{" "}
+                  {formatCurrency(unallocatedAmount)} that will remain
+                  unallocated. You can allocate this amount later or leave it as
+                  reserve funds.
+                </p>
+              </div>
+            )}
 
             <Card>
               <CardHeader>
                 <CardTitle>Adjustment Overview</CardTitle>
                 <CardDescription>
-                  Edit Change or Final amounts to adjust your portfolio
+                  Edit Change or Final amounts to adjust your portfolio. Any
+                  unallocated amount will be saved as reserve funds.
                 </CardDescription>
               </CardHeader>
               <CardContent>

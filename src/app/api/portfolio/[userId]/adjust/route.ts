@@ -120,15 +120,19 @@ export async function PUT(
 
     const totalAllocated = totalProposed + proposedSavings;
 
-    if (Math.abs(totalAllocated - totalInvestment) > 0.01) {
+    // Check if over-allocated (exceeds total investment)
+    if (totalAllocated > totalInvestment + 0.01) {
       return NextResponse.json(
         {
           success: false,
-          message: "Total allocations and savings must equal total investment",
+          message: "Total allocations exceed available investment amount",
         },
         { status: 400 },
       );
     }
+
+    // Calculate unallocated amount (remaining money that's not allocated)
+    const unallocatedAmount = totalInvestment - totalAllocated;
 
     const newAllocations: Record<string, number> = {};
     let goldAllocation = 0;
@@ -159,10 +163,14 @@ export async function PUT(
     return NextResponse.json(
       {
         success: true,
-        message: "Portfolio adjusted",
+        message:
+          unallocatedAmount > 0.01
+            ? `Portfolio adjusted. ₹${unallocatedAmount.toFixed(2)} remains unallocated.`
+            : "Portfolio adjusted successfully",
         data: {
           newTotalValue,
           updatedPredictions: predictedReturns,
+          unallocatedAmount,
         },
       },
       { status: 200 },

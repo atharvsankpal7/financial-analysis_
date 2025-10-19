@@ -1,26 +1,29 @@
-const POLYGON_API_KEY = process.env.POLYGON_API_KEY || '';
-const MCX_API_KEY = process.env.MCX_API_KEY || '';
-
-export interface PolygonStockData {
+export interface StockData {
   symbol: string;
+  name: string;
   price: number;
-  timestamp: number;
+  change: number;
+  changePercent: number;
 }
 
-export interface MCXGoldData {
-  state: string;
+export interface GoldPriceData {
   price: number;
-  date: string;
+  currency: string;
+  unit: string;
+  timestamp: string;
 }
 
-export async function fetchStockPrice(symbol: string): Promise<number> {
-  if (!POLYGON_API_KEY) {
-    return generateMockStockPrice(symbol);
-  }
-
+export async function fetchIndianStockPrice(symbol: string): Promise<number> {
   try {
     const response = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
+      `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      }
     );
 
     if (!response.ok) {
@@ -29,13 +32,48 @@ export async function fetchStockPrice(symbol: string): Promise<number> {
 
     const data = await response.json();
 
-    if (data.results && data.results.length > 0) {
-      return data.results[0].c;
+    if (data.priceInfo && data.priceInfo.lastPrice) {
+      return data.priceInfo.lastPrice;
     }
 
     return generateMockStockPrice(symbol);
   } catch (error) {
     return generateMockStockPrice(symbol);
+  }
+}
+
+export async function fetchIndianStocks(): Promise<StockData[]> {
+  try {
+    const response = await fetch(
+      'https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050',
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return generateMockIndianStocks();
+    }
+
+    const data = await response.json();
+
+    if (data.data && Array.isArray(data.data)) {
+      return data.data.slice(0, 50).map((stock: any) => ({
+        symbol: stock.symbol,
+        name: stock.symbol,
+        price: stock.lastPrice || 0,
+        change: stock.change || 0,
+        changePercent: stock.pChange || 0,
+      }));
+    }
+
+    return generateMockIndianStocks();
+  } catch (error) {
+    return generateMockIndianStocks();
   }
 }
 
@@ -44,36 +82,67 @@ export async function fetchMultipleStockPrices(symbols: string[]): Promise<Recor
 
   await Promise.all(
     symbols.map(async (symbol) => {
-      prices[symbol] = await fetchStockPrice(symbol);
+      prices[symbol] = await fetchIndianStockPrice(symbol);
     })
   );
 
   return prices;
 }
 
-export async function fetchGoldPrice(state: string, date: string): Promise<number> {
-  if (!MCX_API_KEY) {
-    return generateMockGoldPrice(state);
-  }
-
+export async function fetchGoldPrice(location: string): Promise<number> {
   try {
+    const searchQuery = `gold rate ${location} india today`;
     const response = await fetch(
-      `https://api.mcxindia.com/gold-price?state=${encodeURIComponent(state)}&date=${date}&apiKey=${MCX_API_KEY}`
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(searchQuery)}&format=json&no_html=1`
     );
 
     if (!response.ok) {
-      return generateMockGoldPrice(state);
+      return generateMockGoldPrice(location);
+    }
+
+    const data = await response.json();
+
+    if (data.AbstractText) {
+      const priceMatch = data.AbstractText.match(/₹?\s*(\d+(?:,\d+)*(?:\.\d+)?)/);
+      if (priceMatch) {
+        const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+        if (!isNaN(price)) {
+          return price;
+        }
+      }
+    }
+
+    return await fetchGoldPriceFromGoldAPI(location);
+  } catch (error) {
+    return await fetchGoldPriceFromGoldAPI(location);
+  }
+}
+
+async function fetchGoldPriceFromGoldAPI(location: string): Promise<number> {
+  try {
+    const response = await fetch(
+      'https://www.goldapi.io/api/XAU/INR',
+      {
+        headers: {
+          'x-access-token': 'goldapi-demo-key',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return generateMockGoldPrice(location);
     }
 
     const data = await response.json();
 
     if (data.price) {
-      return data.price;
+      const pricePerGram = data.price / 31.1035;
+      return Math.round(pricePerGram * 10);
     }
 
-    return generateMockGoldPrice(state);
+    return generateMockGoldPrice(location);
   } catch (error) {
-    return generateMockGoldPrice(state);
+    return generateMockGoldPrice(location);
   }
 }
 
@@ -84,16 +153,39 @@ function generateMockStockPrice(symbol: string): number {
   return basePrice + variation + Math.random() * 100;
 }
 
-function generateMockGoldPrice(state: string): number {
+function generateMockGoldPrice(location: string): number {
   const basePrice = 6000;
-  const hash = state.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = location.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const variation = (hash % 500);
   return basePrice + variation + Math.random() * 50;
 }
 
-export async function fetchLatestGoldPriceForState(state: string): Promise<{ price: number; date: string }> {
+function generateMockIndianStocks(): StockData[] {
+  const indianStocks = [
+    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
+    'HINDUNILVR', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK',
+    'LT', 'AXISBANK', 'ASIANPAINT', 'MARUTI', 'BAJFINANCE',
+    'HCLTECH', 'WIPRO', 'ULTRACEMCO', 'SUNPHARMA', 'TITAN',
+    'NESTLEIND', 'TATASTEEL', 'POWERGRID', 'NTPC', 'ONGC',
+    'M&M', 'TECHM', 'BAJAJFINSV', 'ADANIPORTS', 'COALINDIA',
+    'DRREDDY', 'DIVISLAB', 'GRASIM', 'HINDALCO', 'JSWSTEEL',
+    'BRITANNIA', 'EICHERMOT', 'SHREECEM', 'INDUSINDBK', 'CIPLA',
+    'TATAMOTORS', 'APOLLOHOSP', 'HEROMOTOCO', 'BPCL', 'UPL',
+    'BAJAJ-AUTO', 'SBILIFE', 'HDFCLIFE', 'ADANIENT', 'TATACONSUM'
+  ];
+
+  return indianStocks.map((symbol, index) => ({
+    symbol,
+    name: symbol,
+    price: generateMockStockPrice(symbol),
+    change: (Math.random() - 0.5) * 100,
+    changePercent: (Math.random() - 0.5) * 5,
+  }));
+}
+
+export async function fetchLatestGoldPriceForLocation(location: string): Promise<{ price: number; date: string }> {
   const today = new Date().toISOString().split('T')[0];
-  const price = await fetchGoldPrice(state, today);
+  const price = await fetchGoldPrice(location);
 
   return {
     price,

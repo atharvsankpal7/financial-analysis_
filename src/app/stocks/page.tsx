@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
@@ -20,7 +20,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, ArrowLeft, Save } from "lucide-react";
 
 interface Stock {
   uuid: string;
@@ -30,8 +30,10 @@ interface Stock {
   currentPrice: number;
 }
 
-export default function SelectStocksPage() {
+export default function StocksManagementPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const [userId, setUserId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [fetchingStocks, setFetchingStocks] = useState(true);
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -42,22 +44,42 @@ export default function SelectStocksPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetchStocks();
-  }, []);
+    if (status === "loading") return;
 
-  const fetchStocks = async () => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+      return;
+    }
+
+    if (session?.user?.id) {
+      setUserId(session.user.id);
+      fetchData(session.user.id);
+    }
+  }, [session, status, router]);
+
+  const fetchData = async (uid: string) => {
     setFetchingStocks(true);
     try {
-      const response = await fetch("/api/assets/stocks");
-      const data = await response.json();
+      const [stocksResponse, portfolioResponse] = await Promise.all([
+        fetch("/api/assets/stocks"),
+        fetch(`/api/portfolio/${uid}`),
+      ]);
 
-      if (Array.isArray(data)) {
-        setStocks(data);
-      } else {
-        setErrors({ fetch: "Failed to load stocks" });
+      const stocksData = await stocksResponse.json();
+      const portfolioData = await portfolioResponse.json();
+
+      if (Array.isArray(stocksData)) {
+        setStocks(stocksData);
+      }
+
+      if (portfolioData.success && portfolioData.data.portfolio) {
+        const currentStockIds = portfolioData.data.marketData.stocks.map(
+          (s: Stock) => s.uuid,
+        );
+        setSelectedStockIds(new Set(currentStockIds));
       }
     } catch (error) {
-      setErrors({ fetch: "An error occurred while loading stocks" });
+      setErrors({ fetch: "An error occurred while loading data" });
     } finally {
       setFetchingStocks(false);
     }
@@ -99,8 +121,8 @@ export default function SelectStocksPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/onboarding/select-stocks", {
-        method: "POST",
+      const response = await fetch(`/api/stocks/${userId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedStockIds: Array.from(selectedStockIds),
@@ -110,15 +132,11 @@ export default function SelectStocksPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Use userId from API response
-        const userId = data.data?.userId;
-        if (userId) {
-          router.push(`/dashboard/${userId}`);
-        } else {
-          router.push("/dashboard");
-        }
+        router.push("/dashboard");
       } else {
-        setErrors({ submit: data.message || "Failed to save stock selection" });
+        setErrors({
+          submit: data.message || "Failed to update stock selection",
+        });
       }
     } catch (error) {
       setErrors({ submit: "An error occurred. Please try again." });
@@ -128,18 +146,24 @@ export default function SelectStocksPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-2xl">
-        <div className="mb-6">
-          <Progress value={100} className="h-2" />
-          <p className="text-sm text-gray-600 mt-2">Step 2 of 2</p>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Manage Stocks</h1>
+            <p className="text-gray-600 mt-1">Update your stock selection</p>
+          </div>
+          <Button variant="outline" onClick={() => router.push("/dashboard")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Select Your Investment Interests</CardTitle>
             <CardDescription>
-              Choose the stocks you are interested in investing in
+              Choose the stocks you want to invest in
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -232,15 +256,6 @@ export default function SelectStocksPage() {
 
               <div className="flex gap-4 pt-4">
                 <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.back()}
-                  disabled={loading}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button
                   onClick={handleSubmit}
                   disabled={loading || selectedStockIds.size === 0}
                   className="flex-1"
@@ -248,10 +263,13 @@ export default function SelectStocksPage() {
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Finishing...
+                      Saving...
                     </>
                   ) : (
-                    "Finish Setup"
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
                   )}
                 </Button>
               </div>
