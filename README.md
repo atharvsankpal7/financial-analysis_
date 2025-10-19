@@ -235,8 +235,4 @@ pnpm lint
 - Use a production-grade MongoDB instance (MongoDB Atlas)
 - Implement data backup and recovery strategies
 
-## License
 
-Proprietary#   f i n a n c i a l - a n a l y s i s _ 
- 
- 
