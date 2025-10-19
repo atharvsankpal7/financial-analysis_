@@ -1,70 +1,89 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Progress } from '@/components/ui/progress';
-import { MapPin, Loader2 } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Progress } from "@/components/ui/progress";
+import { MapPin, Loader2 } from "lucide-react";
 
 export default function InitialInfoPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [loading, setLoading] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [formData, setFormData] = useState({
-    fullName: '',
+    fullName: "",
     location: {
-      state: '',
-      city: '',
+      state: "",
+      city: "",
       coordinates: { lat: 0, lng: 0 },
-      country: 'India',
+      country: "India",
     },
-    initialInvestmentAmount: '',
+    initialInvestmentAmount: "",
     savingsThreshold: {
-      type: 'percentage' as 'percentage' | 'fixed',
-      value: '',
+      type: "percentage" as "percentage" | "fixed",
+      value: "",
     },
-    annualSavingsInterestRate: '',
+    annualSavingsInterestRate: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    if (status === "loading") return;
+
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+      return;
+    }
+
     detectLocation();
-  }, []);
+  }, [status, router]);
 
   const detectLocation = async () => {
     setDetectingLocation(true);
-    if ('geolocation' in navigator) {
+    if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
 
           try {
             const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
             );
             const data = await response.json();
 
             setFormData((prev) => ({
               ...prev,
               location: {
-                state: data.address.state || '',
-                city: data.address.city || data.address.town || data.address.village || '',
+                state: data.address.state || "",
+                city:
+                  data.address.city ||
+                  data.address.town ||
+                  data.address.village ||
+                  "",
                 coordinates: { lat: latitude, lng: longitude },
-                country: 'India',
+                country: "India",
               },
             }));
           } catch (error) {
-            console.error('Failed to fetch location details');
+            console.error("Failed to fetch location details");
           }
           setDetectingLocation(false);
         },
         () => {
           setDetectingLocation(false);
-        }
+        },
       );
     } else {
       setDetectingLocation(false);
@@ -75,30 +94,35 @@ export default function InitialInfoPage() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.fullName || formData.fullName.length < 2) {
-      newErrors.fullName = 'Name must be at least 2 characters';
+      newErrors.fullName = "Name must be at least 2 characters";
     }
 
     if (!formData.location.state) {
-      newErrors.state = 'State is required';
+      newErrors.state = "State is required";
     }
 
     if (!formData.location.city) {
-      newErrors.city = 'City is required';
+      newErrors.city = "City is required";
     }
 
     const investment = parseFloat(formData.initialInvestmentAmount);
     if (!formData.initialInvestmentAmount || investment < 1000) {
-      newErrors.initialInvestmentAmount = 'Minimum investment is ₹1,000';
+      newErrors.initialInvestmentAmount = "Minimum investment is ₹1,000";
     }
 
     const thresholdValue = parseFloat(formData.savingsThreshold.value);
     if (!formData.savingsThreshold.value || thresholdValue < 0) {
-      newErrors.savingsThreshold = 'Savings threshold must be positive';
+      newErrors.savingsThreshold = "Savings threshold must be positive";
     }
 
     const interestRate = parseFloat(formData.annualSavingsInterestRate);
-    if (!formData.annualSavingsInterestRate || interestRate < 0 || interestRate > 100) {
-      newErrors.annualSavingsInterestRate = 'Interest rate must be between 0 and 100';
+    if (
+      !formData.annualSavingsInterestRate ||
+      interestRate < 0 ||
+      interestRate > 100
+    ) {
+      newErrors.annualSavingsInterestRate =
+        "Interest rate must be between 0 and 100";
     }
 
     setErrors(newErrors);
@@ -115,9 +139,9 @@ export default function InitialInfoPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/onboarding/initial-info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/onboarding/initial-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName: formData.fullName,
           location: formData.location,
@@ -126,24 +150,36 @@ export default function InitialInfoPage() {
             type: formData.savingsThreshold.type,
             value: parseFloat(formData.savingsThreshold.value),
           },
-          annualSavingsInterestRate: parseFloat(formData.annualSavingsInterestRate),
+          annualSavingsInterestRate: parseFloat(
+            formData.annualSavingsInterestRate,
+          ),
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        localStorage.setItem('userId', data.data.userId);
-        router.push('/onboarding/select-stocks');
+        router.push("/onboarding/select-stocks");
       } else {
-        setErrors({ submit: data.message || 'Failed to save profile' });
+        setErrors({ submit: data.message || "Failed to save profile" });
       }
     } catch (error) {
-      setErrors({ submit: 'An error occurred. Please try again.' });
+      setErrors({ submit: "An error occurred. Please try again." });
     } finally {
       setLoading(false);
     }
   };
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -157,7 +193,8 @@ export default function InitialInfoPage() {
           <CardHeader>
             <CardTitle>Initial Information</CardTitle>
             <CardDescription>
-              Let's start by gathering some basic information about your investment goals
+              Let's start by gathering some basic information about your
+              investment goals
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -167,10 +204,14 @@ export default function InitialInfoPage() {
                 <Input
                   id="fullName"
                   value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, fullName: e.target.value })
+                  }
                   placeholder="Enter your full name"
                 />
-                {errors.fullName && <p className="text-sm text-red-500">{errors.fullName}</p>}
+                {errors.fullName && (
+                  <p className="text-sm text-red-500">{errors.fullName}</p>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -206,12 +247,17 @@ export default function InitialInfoPage() {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          location: { ...formData.location, state: e.target.value },
+                          location: {
+                            ...formData.location,
+                            state: e.target.value,
+                          },
                         })
                       }
                       placeholder="Enter state"
                     />
-                    {errors.state && <p className="text-sm text-red-500">{errors.state}</p>}
+                    {errors.state && (
+                      <p className="text-sm text-red-500">{errors.state}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -222,33 +268,47 @@ export default function InitialInfoPage() {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          location: { ...formData.location, city: e.target.value },
+                          location: {
+                            ...formData.location,
+                            city: e.target.value,
+                          },
                         })
                       }
                       placeholder="Enter city"
                     />
-                    {errors.city && <p className="text-sm text-red-500">{errors.city}</p>}
+                    {errors.city && (
+                      <p className="text-sm text-red-500">{errors.city}</p>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="initialInvestmentAmount">Initial Investment Amount</Label>
+                <Label htmlFor="initialInvestmentAmount">
+                  Initial Investment Amount
+                </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-500">₹</span>
+                  <span className="absolute left-3 top-2.5 text-gray-500">
+                    ₹
+                  </span>
                   <Input
                     id="initialInvestmentAmount"
                     type="number"
                     className="pl-8"
                     value={formData.initialInvestmentAmount}
                     onChange={(e) =>
-                      setFormData({ ...formData, initialInvestmentAmount: e.target.value })
+                      setFormData({
+                        ...formData,
+                        initialInvestmentAmount: e.target.value,
+                      })
                     }
                     placeholder="100000"
                   />
                 </div>
                 {errors.initialInvestmentAmount && (
-                  <p className="text-sm text-red-500">{errors.initialInvestmentAmount}</p>
+                  <p className="text-sm text-red-500">
+                    {errors.initialInvestmentAmount}
+                  </p>
                 )}
               </div>
 
@@ -256,10 +316,13 @@ export default function InitialInfoPage() {
                 <Label>Savings Threshold</Label>
                 <RadioGroup
                   value={formData.savingsThreshold.type}
-                  onValueChange={(value: 'percentage' | 'fixed') =>
+                  onValueChange={(value: "percentage" | "fixed") =>
                     setFormData({
                       ...formData,
-                      savingsThreshold: { ...formData.savingsThreshold, type: value },
+                      savingsThreshold: {
+                        ...formData.savingsThreshold,
+                        type: value,
+                      },
                     })
                   }
                 >
@@ -274,32 +337,49 @@ export default function InitialInfoPage() {
                 </RadioGroup>
 
                 <div className="relative">
-                  {formData.savingsThreshold.type === 'fixed' && (
-                    <span className="absolute left-3 top-2.5 text-gray-500">₹</span>
+                  {formData.savingsThreshold.type === "fixed" && (
+                    <span className="absolute left-3 top-2.5 text-gray-500">
+                      ₹
+                    </span>
                   )}
                   <Input
                     type="number"
-                    className={formData.savingsThreshold.type === 'fixed' ? 'pl-8' : ''}
+                    className={
+                      formData.savingsThreshold.type === "fixed" ? "pl-8" : ""
+                    }
                     value={formData.savingsThreshold.value}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        savingsThreshold: { ...formData.savingsThreshold, value: e.target.value },
+                        savingsThreshold: {
+                          ...formData.savingsThreshold,
+                          value: e.target.value,
+                        },
                       })
                     }
-                    placeholder={formData.savingsThreshold.type === 'percentage' ? '20' : '50000'}
+                    placeholder={
+                      formData.savingsThreshold.type === "percentage"
+                        ? "20"
+                        : "50000"
+                    }
                   />
-                  {formData.savingsThreshold.type === 'percentage' && (
-                    <span className="absolute right-3 top-2.5 text-gray-500">%</span>
+                  {formData.savingsThreshold.type === "percentage" && (
+                    <span className="absolute right-3 top-2.5 text-gray-500">
+                      %
+                    </span>
                   )}
                 </div>
                 {errors.savingsThreshold && (
-                  <p className="text-sm text-red-500">{errors.savingsThreshold}</p>
+                  <p className="text-sm text-red-500">
+                    {errors.savingsThreshold}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="annualSavingsInterestRate">Annual Savings Interest Rate</Label>
+                <Label htmlFor="annualSavingsInterestRate">
+                  Annual Savings Interest Rate
+                </Label>
                 <div className="relative">
                   <Input
                     id="annualSavingsInterestRate"
@@ -307,14 +387,21 @@ export default function InitialInfoPage() {
                     step="0.1"
                     value={formData.annualSavingsInterestRate}
                     onChange={(e) =>
-                      setFormData({ ...formData, annualSavingsInterestRate: e.target.value })
+                      setFormData({
+                        ...formData,
+                        annualSavingsInterestRate: e.target.value,
+                      })
                     }
                     placeholder="6.5"
                   />
-                  <span className="absolute right-3 top-2.5 text-gray-500">%</span>
+                  <span className="absolute right-3 top-2.5 text-gray-500">
+                    %
+                  </span>
                 </div>
                 {errors.annualSavingsInterestRate && (
-                  <p className="text-sm text-red-500">{errors.annualSavingsInterestRate}</p>
+                  <p className="text-sm text-red-500">
+                    {errors.annualSavingsInterestRate}
+                  </p>
                 )}
               </div>
 
@@ -332,7 +419,7 @@ export default function InitialInfoPage() {
                       Saving...
                     </>
                   ) : (
-                    'Continue'
+                    "Continue"
                   )}
                 </Button>
               </div>

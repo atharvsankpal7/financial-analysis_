@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
+import OnboardingData from "@/models/OnboardingData";
 import UserPortfolio from "@/models/UserPortfolio";
 import { calculateSafeSavings } from "@/lib/utils";
 import { calculatePredictedReturns } from "@/lib/predictions";
@@ -59,6 +60,18 @@ export async function PUT(
       );
     }
 
+    const onboardingData = await OnboardingData.findOne({ userId });
+
+    if (!onboardingData) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Onboarding data not found",
+        },
+        { status: 404 },
+      );
+    }
+
     const portfolio = await UserPortfolio.findOne({ userId });
 
     if (!portfolio) {
@@ -72,11 +85,11 @@ export async function PUT(
     }
 
     const safeSavings = calculateSafeSavings(
-      user.initialInvestmentAmount,
-      user.savingsThreshold,
+      onboardingData.initialInvestmentAmount,
+      onboardingData.savingsThreshold,
     );
 
-    const totalInvestment = user.initialInvestmentAmount;
+    const totalInvestment = onboardingData.initialInvestmentAmount;
 
     if (proposedSavings < safeSavings) {
       return NextResponse.json(
@@ -138,7 +151,7 @@ export async function PUT(
       newAllocations,
       goldAllocation,
       proposedSavings,
-      user.annualSavingsInterestRate,
+      onboardingData.annualSavingsInterestRate,
     );
 
     const newTotalValue = totalProposed + proposedSavings;

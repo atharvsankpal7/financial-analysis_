@@ -26,7 +26,6 @@ export const initialInfoSchema = z.object({
 });
 
 export const selectStocksSchema = z.object({
-  userId: z.string().min(1, "User ID is required"),
   selectedStockIds: z
     .array(z.string())
     .min(1, "At least one stock must be selected"),

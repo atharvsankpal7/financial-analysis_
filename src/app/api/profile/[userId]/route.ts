@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
+import OnboardingData from "@/models/OnboardingData";
 import UserPortfolio from "@/models/UserPortfolio";
 import { initialInfoSchema } from "@/lib/validations";
 import { calculateSafeSavings } from "@/lib/utils";
@@ -37,15 +38,27 @@ export async function GET(
       );
     }
 
+    const onboardingData = await OnboardingData.findOne({ userId });
+
+    if (!onboardingData) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Onboarding data not found",
+        },
+        { status: 404 },
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
         data: {
-          fullName: user.fullName,
-          location: user.location,
-          initialInvestmentAmount: user.initialInvestmentAmount,
-          savingsThreshold: user.savingsThreshold,
-          annualSavingsInterestRate: user.annualSavingsInterestRate,
+          fullName: onboardingData.fullName,
+          location: onboardingData.location,
+          initialInvestmentAmount: onboardingData.initialInvestmentAmount,
+          savingsThreshold: onboardingData.savingsThreshold,
+          annualSavingsInterestRate: onboardingData.annualSavingsInterestRate,
         },
       },
       { status: 200 },
@@ -89,6 +102,7 @@ export async function PUT(
         {
           success: false,
           message: "Validation failed",
+          errors: validationResult.error.issues,
         },
         { status: 400 },
       );
@@ -118,134 +132,79 @@ export async function PUT(
       );
     }
 
+    const existingOnboarding = await OnboardingData.findOne({ userId });
+
+    if (!existingOnboarding) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Onboarding data not found. Please complete onboarding first.",
+        },
+        { status: 404 },
+      );
+    }
+
     const portfolio = await UserPortfolio.findOne({ userId });
 
     if (portfolio) {
-      const allocations =
-        portfolio.allocations instanceof Map
-          ? Object.fromEntries(portfolio.allocations)
-          : portfolio.allocations;
-
       const currentTotalAllocated =
-        portfolio.savingsAllocation +
-        portfolio.goldAllocation +
-        Object.values(allocations as Record<string, number>).reduce(
+        Object.values(portfolio.allocations).reduce(
           (sum, val) => sum + val,
           0,
-        );
+        ) +
+        portfolio.goldAllocation +
+        portfolio.savingsAllocation;
 
       const unallocatedAmount =
-        user.initialInvestmentAmount - currentTotalAllocated;
+        existingOnboarding.initialInvestmentAmount - currentTotalAllocated;
       const investmentReduction =
-        user.initialInvestmentAmount - data.initialInvestmentAmount;
+        existingOnboarding.initialInvestmentAmount -
+        data.initialInvestmentAmount;
 
       if (investmentReduction > 0 && investmentReduction > unallocatedAmount) {
         return NextResponse.json(
           {
             success: false,
-            message: `Cannot reduce investment by ${investmentReduction}. Only ${unallocatedAmount} is unallocated. Please adjust your portfolio allocations first.`,
+            message: `Cannot reduce investment by ₹${investmentReduction}. Only ₹${unallocatedAmount} is unallocated. Please adjust your portfolio allocations first.`,
           },
           { status: 400 },
         );
       }
     }
 
-    const existingUser = await User.findById(userId);
-
-    if (!existingUser) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "User not found",
-        },
-        { status: 404 },
-      );
-    }
-
-    const oldInvestmentAmount = existingUser.initialInvestmentAmount;
+    const oldInvestmentAmount = existingOnboarding.initialInvestmentAmount;
     const oldSafeSavings = calculateSafeSavings(
       oldInvestmentAmount,
-      existingUser.savingsThreshold,
+      existingOnboarding.savingsThreshold,
     );
-
-    const newInvestmentAmount = data.initialInvestmentAmount;
     const newSafeSavings = calculateSafeSavings(
-      newInvestmentAmount,
+      data.initialInvestmentAmount,
       data.savingsThreshold,
     );
 
-    existingUser.fullName = data.fullName;
-    existingUser.location = data.location;
-    existingUser.initialInvestmentAmount = data.initialInvestmentAmount;
-    existingUser.savingsThreshold = data.savingsThreshold;
-    existingUser.annualSavingsInterestRate = data.annualSavingsInterestRate;
+    existingOnboarding.fullName = data.fullName;
+    existingOnboarding.location = data.location;
+    existingOnboarding.initialInvestmentAmount = data.initialInvestmentAmount;
+    existingOnboarding.savingsThreshold = data.savingsThreshold;
+    existingOnboarding.annualSavingsInterestRate =
+      data.annualSavingsInterestRate;
 
-    await existingUser.save();
-
-    if (
-      oldInvestmentAmount !== newInvestmentAmount ||
-      oldSafeSavings !== newSafeSavings
-    ) {
-      const existingPortfolio = await UserPortfolio.findOne({ userId });
-
-      if (existingPortfolio) {
-        const allocations =
-          existingPortfolio.allocations instanceof Map
-            ? Object.fromEntries(existingPortfolio.allocations)
-            : existingPortfolio.allocations;
-
-        const currentTotal =
-          existingPortfolio.savingsAllocation +
-          existingPortfolio.goldAllocation +
-          Object.values(allocations as Record<string, number>).reduce(
-            (sum, val) => sum + val,
-            0,
-          );
-
-        if (currentTotal !== newInvestmentAmount) {
-          const ratio = newInvestmentAmount / currentTotal;
-
-          existingPortfolio.savingsAllocation = Math.max(
-            newSafeSavings,
-            existingPortfolio.savingsAllocation * ratio,
-          );
-          existingPortfolio.goldAllocation =
-            existingPortfolio.goldAllocation * ratio;
-
-          const currentAllocations =
-            existingPortfolio.allocations instanceof Map
-              ? Object.fromEntries(existingPortfolio.allocations)
-              : existingPortfolio.allocations;
-
-          const newAllocations: Record<string, number> = {};
-          for (const key in currentAllocations as Record<string, number>) {
-            newAllocations[key] =
-              (currentAllocations as Record<string, number>)[key] * ratio;
-          }
-
-          existingPortfolio.allocations = newAllocations as any;
-
-          const newTotal =
-            existingPortfolio.savingsAllocation +
-            existingPortfolio.goldAllocation +
-            Object.values(newAllocations).reduce((sum, val) => sum + val, 0);
-
-          if (Math.abs(newTotal - newInvestmentAmount) > 0.01) {
-            const adjustment = newInvestmentAmount - newTotal;
-            existingPortfolio.savingsAllocation += adjustment;
-          }
-
-          await existingPortfolio.save();
-        }
-      }
-    }
+    await existingOnboarding.save();
 
     return NextResponse.json(
       {
         success: true,
         message: "Profile updated successfully",
         data: {
-          userId: existingUser._id.toString(),
+          fullName: existingOnboarding.fullName,
+          location: existingOnboarding.location,
+          initialInvestmentAmount: existingOnboarding.initialInvestmentAmount,
+          savingsThreshold: existingOnboarding.savingsThreshold,
+          annualSavingsInterestRate:
+            existingOnboarding.annualSavingsInterestRate,
+          oldSafeSavings,
+          newSafeSavings,
         },
       },
       { status: 200 },

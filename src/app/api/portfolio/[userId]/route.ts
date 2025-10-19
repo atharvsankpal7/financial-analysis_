@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
+import OnboardingData from "@/models/OnboardingData";
 import UserPortfolio from "@/models/UserPortfolio";
 import Asset from "@/models/Asset";
 import GoldPrice from "@/models/GoldPrice";
@@ -35,6 +36,18 @@ export async function GET(
         {
           success: false,
           message: "User not found",
+        },
+        { status: 404 },
+      );
+    }
+
+    const onboardingData = await OnboardingData.findOne({ userId });
+
+    if (!onboardingData) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Onboarding data not found",
         },
         { status: 404 },
       );
@@ -77,7 +90,7 @@ export async function GET(
     );
 
     const latestGoldPrice = await GoldPrice.findOne({
-      state: user.location.state,
+      state: onboardingData.location.state,
     })
       .sort({ date: -1 })
       .lean();
@@ -105,10 +118,11 @@ export async function GET(
       allocations,
       portfolio.goldAllocation,
       portfolio.savingsAllocation,
-      user.annualSavingsInterestRate,
+      onboardingData.annualSavingsInterestRate,
     );
 
-    const unallocatedAmount = user.initialInvestmentAmount - totalValue;
+    const unallocatedAmount =
+      onboardingData.initialInvestmentAmount - totalValue;
 
     return NextResponse.json(
       {

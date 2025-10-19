@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
+import OnboardingData from "@/models/OnboardingData";
 import UserPortfolio from "@/models/UserPortfolio";
 import Asset from "@/models/Asset";
 import { calculateSafeSavings } from "@/lib/utils";
@@ -38,6 +39,18 @@ export async function GET(
       );
     }
 
+    const onboardingData = await OnboardingData.findOne({ userId });
+
+    if (!onboardingData) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Onboarding data not found",
+        },
+        { status: 404 },
+      );
+    }
+
     const portfolio = await UserPortfolio.findOne({ userId });
 
     if (!portfolio) {
@@ -51,11 +64,11 @@ export async function GET(
     }
 
     const safeSavings = calculateSafeSavings(
-      user.initialInvestmentAmount,
-      user.savingsThreshold,
+      onboardingData.initialInvestmentAmount,
+      onboardingData.savingsThreshold,
     );
 
-    const totalInvestment = user.initialInvestmentAmount;
+    const totalInvestment = onboardingData.initialInvestmentAmount;
 
     const allocations =
       portfolio.allocations instanceof Map
@@ -73,7 +86,7 @@ export async function GET(
       allocations,
       portfolio.goldAllocation,
       portfolio.savingsAllocation,
-      user.annualSavingsInterestRate,
+      onboardingData.annualSavingsInterestRate,
     );
 
     const stockIds = Object.keys(allocations);
