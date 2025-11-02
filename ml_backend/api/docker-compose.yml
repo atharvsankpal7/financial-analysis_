@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: financial-analysis-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount model directory
+      - ../train3/models:/app/models:ro
+      # Mount dataset
+      - ../train3/dataset_combined_2_5yr.csv:/app/dataset_combined_2_5yr.csv:ro
+      # Mount logs directory
+      - ./logs:/app/logs
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - LOG_LEVEL=INFO
+      - MODEL_PATH=models/hybrid_lstm_attention.keras
+      - DATASET_PATH=dataset_combined_2_5yr.csv
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - financial-network
+
+  # Optional: Add a frontend or monitoring service
+  # frontend:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./frontend:/usr/share/nginx/html:ro
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - financial-network
+
+networks:
+  financial-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
