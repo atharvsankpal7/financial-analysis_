@@ -40,7 +40,7 @@ export default function SignInPage() {
       if (result?.error) {
         setError(result.error);
       } else if (result?.ok) {
-        router.push("/onboarding/initial-info");
+        router.push("/dashboard");
         router.refresh();
       }
     } catch (error) {
